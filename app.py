@@ -2,153 +2,193 @@ import streamlit as st
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+import sqlite3
+from datetime import datetime
+from fpdf import FPDF
 
 # =========================
-# PAGE CONFIG
+# DATABASE
 # =========================
-st.set_page_config(page_title="Pro Business Dashboard", layout="wide")
+conn = sqlite3.connect("analytics.db", check_same_thread=False)
+cursor = conn.cursor()
+
+# USERS TABLE
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    username TEXT PRIMARY KEY,
+    password TEXT
+)
+""")
+
+# UPLOADS TABLE
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS uploads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT,
+    filename TEXT,
+    total_revenue REAL,
+    total_sales REAL,
+    created_at TEXT
+)
+""")
+
+conn.commit()
 
 # =========================
-# SIDEBAR
+# SESSION STATE
 # =========================
-st.sidebar.title("📊 Dashboard Panel")
-st.sidebar.info("🚀 Powered by Ahmet Ince Analytics")
+if "user" not in st.session_state:
+    st.session_state.user = None
 
 # =========================
-# HEADER
+# LOGIN FUNCTION
 # =========================
-st.title("💼 PRO Business Analytics Dashboard")
-st.markdown("### Veri odaklı satış analizi + ürün öneri sistemi")
+def login():
+    st.title("🔐 Login System")
+
+    choice = st.radio("Seçim", ["Login", "Register"])
+
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+
+    if st.button("Submit"):
+
+        if choice == "Register":
+            cursor.execute("INSERT OR IGNORE INTO users VALUES (?,?)", (username, password))
+            conn.commit()
+            st.success("Kayıt başarılı, login olabilirsiniz")
+
+        else:
+            cursor.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password))
+            user = cursor.fetchone()
+
+            if user:
+                st.session_state.user = username
+                st.success("Login başarılı")
+                st.rerun()
+            else:
+                st.error("Hatalı giriş")
+
+# =========================
+# PDF REPORT
+# =========================
+def create_pdf(username, total_revenue, total_sales, top_product):
+
+    pdf = FPDF()
+    pdf.add_page()
+
+    pdf.set_font("Arial", size=12)
+
+    pdf.cell(200, 10, txt="Business Analytics Report", ln=True, align="C")
+    pdf.ln(10)
+
+    pdf.cell(200, 10, txt=f"User: {username}", ln=True)
+    pdf.cell(200, 10, txt=f"Total Revenue: {total_revenue}", ln=True)
+    pdf.cell(200, 10, txt=f"Total Sales: {total_sales}", ln=True)
+    pdf.cell(200, 10, txt=f"Top Product: {top_product}", ln=True)
+
+    filename = f"report_{username}.pdf"
+    pdf.output(filename)
+
+    return filename
+
+# =========================
+# LOGIN CHECK
+# =========================
+if st.session_state.user is None:
+    login()
+    st.stop()
+
+# =========================
+# DASHBOARD
+# =========================
+st.set_page_config(page_title="Pro SaaS Dashboard", layout="wide")
+
+st.sidebar.title(f"👤 {st.session_state.user}")
+st.sidebar.success("Logged in")
+
+if st.sidebar.button("Logout"):
+    st.session_state.user = None
+    st.rerun()
+
+st.title("💼 PRO SaaS Business Analytics Dashboard")
 
 # =========================
 # FILE UPLOAD
 # =========================
-uploaded_file = st.file_uploader("CSV dosyanızı yükleyin", type=["csv"])
+uploaded_file = st.file_uploader("CSV yükle", type=["csv"])
 
 if uploaded_file:
 
     df = pd.read_csv(uploaded_file)
 
-    st.subheader("📌 Veri Önizleme")
     st.dataframe(df.head())
 
-    # =========================
-    # CHECK
-    # =========================
     required_cols = ["date", "product", "quantity", "price"]
 
     if not all(col in df.columns for col in required_cols):
-        st.error("CSV format hatalı!")
+        st.error("CSV format hatalı")
     else:
 
-        # =========================
-        # FEATURE ENGINEERING
-        # =========================
         df["date"] = pd.to_datetime(df["date"])
         df["revenue"] = df["quantity"] * df["price"]
 
-        # =========================
-        # KPI METRICS
-        # =========================
         total_revenue = df["revenue"].sum()
         total_sales = df["quantity"].sum()
-        avg_revenue = df["revenue"].mean()
-
-        col1, col2, col3 = st.columns(3)
-
-        col1.metric("💰 Toplam Gelir", f"{total_revenue:,.0f} ₺")
-        col2.metric("🛒 Toplam Satış", total_sales)
-        col3.metric("📦 Ortalama Gelir", f"{avg_revenue:,.2f} ₺")
-
-        # =========================
-        # PRODUCT ANALYSIS
-        # =========================
-        st.subheader("📦 Ürün Performansı")
 
         product_sales = df.groupby("product")["revenue"].sum().sort_values(ascending=False)
+        top_product = product_sales.idxmax()
+
+        # =========================
+        # SAVE TO DB
+        # =========================
+        cursor.execute("""
+        INSERT INTO uploads (username, filename, total_revenue, total_sales, created_at)
+        VALUES (?,?,?,?,?)
+        """, (
+            st.session_state.user,
+            uploaded_file.name,
+            float(total_revenue),
+            float(total_sales),
+            str(datetime.now())
+        ))
+
+        conn.commit()
+
+        # =========================
+        # METRICS
+        # =========================
+        c1, c2, c3 = st.columns(3)
+
+        c1.metric("💰 Revenue", f"{total_revenue:,.0f} ₺")
+        c2.metric("🛒 Sales", total_sales)
+        c3.metric("🔥 Top Product", top_product)
+
+        # =========================
+        # CHART
+        # =========================
+        st.subheader("📊 Product Performance")
 
         fig, ax = plt.subplots()
         sns.barplot(x=product_sales.values, y=product_sales.index, ax=ax)
         st.pyplot(fig)
 
         # =========================
-        # DAILY SALES
+        # PDF EXPORT
         # =========================
-        st.subheader("📅 Günlük Satış")
+        st.subheader("📄 Report Export")
 
-        daily = df.groupby("date")["revenue"].sum()
+        if st.button("Generate PDF Report"):
 
-        fig2, ax2 = plt.subplots()
-        daily.plot(ax=ax2)
-        st.pyplot(fig2)
+            file = create_pdf(
+                st.session_state.user,
+                total_revenue,
+                total_sales,
+                top_product
+            )
 
-        # =========================
-        # INSIGHTS
-        # =========================
-        st.subheader("🧠 Akıllı Öneriler")
-
-        insights = []
-
-        top_product = product_sales.idxmax()
-        low_product = product_sales.idxmin()
-
-        insights.append(f"🔥 En iyi ürün: {top_product}")
-        insights.append(f"⚠️ En zayıf ürün: {low_product}")
-
-        if total_revenue < 1000:
-            insights.append("📉 Gelir düşük → kampanya gerekli")
-        else:
-            insights.append("📈 İşletme sağlıklı")
-
-        for i in insights:
-            st.write(i)
-
-        # =========================
-        # ADVANCED INSIGHTS
-        # =========================
-        st.subheader("🔥 Advanced Business Insights")
-
-        share = (product_sales.max() / product_sales.sum()) * 100
-
-        st.success(f"Top Revenue Product: {top_product}")
-        st.info(f"Top product revenue share: %{share:.2f}")
-
-        if total_revenue < 1000:
-            st.warning("Revenue is low → marketing campaign recommended")
-        else:
-            st.success("Revenue is healthy")
-
-        # =========================
-        # RECOMMENDATION ENGINE
-        # =========================
-        st.subheader("🎯 Ürün Öneri Sistemi")
-
-        mean_value = product_sales.mean()
-
-        strong_products = product_sales[product_sales > mean_value]
-        weak_products = product_sales[product_sales <= mean_value]
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.markdown("### 🟢 Yüksek Potansiyel Ürünler")
-            st.dataframe(strong_products)
-
-        with col2:
-            st.markdown("### 🔴 Geliştirilmesi Gereken Ürünler")
-            st.dataframe(weak_products)
-
-        # =========================
-        # OPPORTUNITIES
-        # =========================
-        st.subheader("🚀 Gizli Fırsatlar")
-
-        opportunity = product_sales[
-            (product_sales < mean_value) &
-            (product_sales > product_sales.quantile(0.25))
-        ]
-
-        st.dataframe(opportunity)
+            with open(file, "rb") as f:
+                st.download_button("Download PDF", f, file_name=file)
 
 else:
-    st.info("CSV yükleyerek başlayın")
+    st.info("CSV yükleyin")
