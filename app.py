@@ -14,16 +14,11 @@ st.set_page_config(page_title="Pro Business Dashboard", layout="wide")
 st.sidebar.title("📊 Dashboard Panel")
 st.sidebar.info("🚀 Powered by Ahmet Ince Analytics")
 
-st.sidebar.markdown("### 📌 Filtreler")
-
 # =========================
 # HEADER
 # =========================
 st.title("💼 PRO Business Analytics Dashboard")
-
-st.markdown("""
-### Veri odaklı satış analizi + ürün öneri sistemi
-""")
+st.markdown("### Veri odaklı satış analizi + ürün öneri sistemi")
 
 # =========================
 # FILE UPLOAD
@@ -109,7 +104,22 @@ if uploaded_file:
             st.write(i)
 
         # =========================
-        # 🚀 RECOMMENDATION ENGINE
+        # ADVANCED INSIGHTS
+        # =========================
+        st.subheader("🔥 Advanced Business Insights")
+
+        share = (product_sales.max() / product_sales.sum()) * 100
+
+        st.success(f"Top Revenue Product: {top_product}")
+        st.info(f"Top product revenue share: %{share:.2f}")
+
+        if total_revenue < 1000:
+            st.warning("Revenue is low → marketing campaign recommended")
+        else:
+            st.success("Revenue is healthy")
+
+        # =========================
+        # RECOMMENDATION ENGINE
         # =========================
         st.subheader("🎯 Ürün Öneri Sistemi")
 
@@ -129,7 +139,7 @@ if uploaded_file:
             st.dataframe(weak_products)
 
         # =========================
-        # BONUS: OPPORTUNITY PRODUCTS
+        # OPPORTUNITIES
         # =========================
         st.subheader("🚀 Gizli Fırsatlar")
 
