@@ -32,6 +32,11 @@ CREATE TABLE IF NOT EXISTS uploads (
 )
 """)
 
+# DEMO USER
+cursor.execute("""
+INSERT OR IGNORE INTO users VALUES ('demo','1234','pro')
+""")
+
 conn.commit()
 
 # =========================
@@ -78,6 +83,15 @@ def login():
             else:
                 st.error("Hatalı giriş")
 
+    # DEMO LOGIN
+    st.markdown("### ⚡ Hızlı Giriş")
+    st.info("Demo hesap: demo / 1234")
+
+    if st.button("Demo ile giriş yap"):
+        st.session_state.user = "demo"
+        st.session_state.role = "pro"
+        st.rerun()
+
 # =========================
 # PDF REPORT
 # =========================
@@ -112,14 +126,14 @@ st.set_page_config(page_title="AI SaaS Dashboard", layout="wide")
 
 st.sidebar.title(f"👤 {st.session_state.user}")
 
-# PLAN GÖSTER
+# PLAN
 st.sidebar.markdown("### 💰 Plan")
 if st.session_state.role == "free":
     st.sidebar.warning("Free Plan")
 else:
     st.sidebar.success("Pro Plan")
 
-# UPGRADE BUTTON
+# UPGRADE
 if st.session_state.role == "free":
     if st.sidebar.button("🚀 Pro'ya Geç"):
         cursor.execute(
@@ -151,7 +165,7 @@ if uploaded_file:
     required_cols = ["date", "product", "quantity", "price"]
 
     if not all(col in df.columns for col in required_cols):
-        st.error("CSV format hatalı (date, product, quantity, price)")
+        st.error("CSV format hatalı")
     else:
 
         df["date"] = pd.to_datetime(df["date"])
@@ -163,9 +177,7 @@ if uploaded_file:
         product_sales = df.groupby("product")["revenue"].sum()
         top_product = product_sales.idxmax()
 
-        # =========================
         # SAVE DB
-        # =========================
         cursor.execute("""
         INSERT INTO uploads VALUES (NULL,?,?,?,?,?)
         """, (
@@ -177,19 +189,14 @@ if uploaded_file:
         ))
         conn.commit()
 
-        # =========================
         # KPI
-        # =========================
         c1, c2, c3 = st.columns(3)
         c1.metric("💰 Revenue", f"{total_revenue:,.0f}")
         c2.metric("🛒 Sales", total_sales)
         c3.metric("🔥 Top Product", top_product)
 
-        # =========================
         # CHART
-        # =========================
         st.subheader("📊 Product Performance")
-
         fig, ax = plt.subplots()
         sns.barplot(x=product_sales.values, y=product_sales.index, ax=ax)
         st.pyplot(fig)
@@ -203,15 +210,13 @@ if uploaded_file:
             st.warning("🔒 Bu özellik sadece Pro kullanıcılar için")
         else:
             basket = df.groupby(['date', 'product'])['quantity'].sum().unstack().fillna(0)
-            basket = basket.applymap(lambda x: 1 if x > 0 else 0)
+            basket = basket > 0  # CLEAN BOOLEAN MATRIX
 
             frequent_items = apriori(basket, min_support=0.1, use_colnames=True)
             rules = association_rules(frequent_items, metric="lift", min_threshold=1)
 
             if not rules.empty:
                 rules = rules.sort_values("lift", ascending=False)
-
-                st.write("📌 En güçlü ürün ilişkileri:")
 
                 for i in range(min(5, len(rules))):
                     a = list(rules.iloc[i]["antecedents"])[0]
@@ -226,7 +231,7 @@ if uploaded_file:
         st.subheader("📄 PDF Rapor")
 
         if st.session_state.role != "pro":
-            st.warning("🔒 PDF export sadece Pro kullanıcılar için")
+            st.warning("🔒 PDF sadece Pro kullanıcılar için")
         else:
             if st.button("PDF oluştur"):
                 file = create_pdf(
