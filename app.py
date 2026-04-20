@@ -8,6 +8,26 @@ from fpdf import FPDF
 from mlxtend.frequent_patterns import apriori, association_rules
 
 # =========================
+# PAGE CONFIG + UI
+# =========================
+st.set_page_config(page_title="Smart Analytics", page_icon="📊", layout="wide")
+
+st.markdown("""
+<style>
+body {background-color: #0E1117; color: white;}
+.stMetric {background-color: #1c1f26; padding: 15px; border-radius: 10px;}
+.stButton>button {background-color: #4CAF50; color: white; border-radius: 10px;}
+</style>
+""", unsafe_allow_html=True)
+
+# LOGO + HEADER
+st.image("assets/logo.png", width=120)
+st.markdown("""
+<h1 style='color:#4CAF50;'>Smart Business Analytics</h1>
+<p style='color:gray;'>AI destekli satış ve müşteri analizi</p>
+""", unsafe_allow_html=True)
+
+# =========================
 # DATABASE
 # =========================
 conn = sqlite3.connect("analytics.db", check_same_thread=False)
@@ -33,10 +53,7 @@ CREATE TABLE IF NOT EXISTS uploads (
 """)
 
 # DEMO USER
-cursor.execute("""
-INSERT OR IGNORE INTO users VALUES ('demo','1234','pro')
-""")
-
+cursor.execute("INSERT OR IGNORE INTO users VALUES ('demo','1234','pro')")
 conn.commit()
 
 # =========================
@@ -49,7 +66,7 @@ if "role" not in st.session_state:
     st.session_state.role = None
 
 # =========================
-# LOGIN SYSTEM
+# LOGIN
 # =========================
 def login():
     st.title("🔐 Login / Register")
@@ -60,20 +77,15 @@ def login():
     password = st.text_input("Password", type="password")
 
     if st.button("Devam Et"):
-
         if choice == "Register":
-            cursor.execute(
-                "INSERT OR IGNORE INTO users VALUES (?,?,?)",
-                (username, password, "free")
-            )
+            cursor.execute("INSERT OR IGNORE INTO users VALUES (?,?,?)",
+                           (username, password, "free"))
             conn.commit()
             st.success("Kayıt başarılı (Free kullanıcı)")
 
         else:
-            cursor.execute(
-                "SELECT * FROM users WHERE username=? AND password=?",
-                (username, password)
-            )
+            cursor.execute("SELECT * FROM users WHERE username=? AND password=?",
+                           (username, password))
             user = cursor.fetchone()
 
             if user:
@@ -83,7 +95,6 @@ def login():
             else:
                 st.error("Hatalı giriş")
 
-    # DEMO LOGIN
     st.markdown("### ⚡ Hızlı Giriş")
     st.info("Demo hesap: demo / 1234")
 
@@ -92,65 +103,34 @@ def login():
         st.session_state.role = "pro"
         st.rerun()
 
-# =========================
-# PDF REPORT
-# =========================
-def create_pdf(username, revenue, sales, top_product):
-
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-
-    pdf.cell(200, 10, "Business Analytics Report", ln=True)
-    pdf.cell(200, 10, f"User: {username}", ln=True)
-    pdf.cell(200, 10, f"Revenue: {revenue}", ln=True)
-    pdf.cell(200, 10, f"Sales: {sales}", ln=True)
-    pdf.cell(200, 10, f"Top Product: {top_product}", ln=True)
-
-    filename = f"report_{username}.pdf"
-    pdf.output(filename)
-
-    return filename
-
-# =========================
 # LOGIN CHECK
-# =========================
 if st.session_state.user is None:
     login()
     st.stop()
 
 # =========================
-# DASHBOARD
+# SIDEBAR
 # =========================
-st.set_page_config(page_title="AI SaaS Dashboard", layout="wide")
-
 st.sidebar.title(f"👤 {st.session_state.user}")
 
-# PLAN
 st.sidebar.markdown("### 💰 Plan")
 if st.session_state.role == "free":
     st.sidebar.warning("Free Plan")
 else:
     st.sidebar.success("Pro Plan")
 
-# UPGRADE
 if st.session_state.role == "free":
     if st.sidebar.button("🚀 Pro'ya Geç"):
-        cursor.execute(
-            "UPDATE users SET role='pro' WHERE username=?",
-            (st.session_state.user,)
-        )
+        cursor.execute("UPDATE users SET role='pro' WHERE username=?",
+                       (st.session_state.user,))
         conn.commit()
         st.session_state.role = "pro"
-        st.sidebar.success("Artık Pro kullanıcısın 🎉")
+        st.sidebar.success("Pro oldun 🎉")
 
-# LOGOUT
 if st.sidebar.button("Logout"):
     st.session_state.user = None
     st.session_state.role = None
     st.rerun()
-
-st.title("🤖 AI Business Analytics SaaS Dashboard")
 
 # =========================
 # FILE UPLOAD
@@ -189,28 +169,53 @@ if uploaded_file:
         ))
         conn.commit()
 
-        # KPI
+        # =========================
+        # KPI CARDS
+        # =========================
         c1, c2, c3 = st.columns(3)
-        c1.metric("💰 Revenue", f"{total_revenue:,.0f}")
-        c2.metric("🛒 Sales", total_sales)
-        c3.metric("🔥 Top Product", top_product)
 
+        with c1:
+            st.markdown(f"""
+            <div style='background:#1c1f26;padding:20px;border-radius:10px'>
+            <h3>💰 Revenue</h3>
+            <h2>{total_revenue:,.0f} ₺</h2>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with c2:
+            st.markdown(f"""
+            <div style='background:#1c1f26;padding:20px;border-radius:10px'>
+            <h3>🛒 Sales</h3>
+            <h2>{total_sales}</h2>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with c3:
+            st.markdown(f"""
+            <div style='background:#1c1f26;padding:20px;border-radius:10px'>
+            <h3>🔥 Top Product</h3>
+            <h2>{top_product}</h2>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # =========================
         # CHART
-        st.subheader("📊 Product Performance")
+        # =========================
+        st.subheader("📊 Ürün Performansı")
         fig, ax = plt.subplots()
         sns.barplot(x=product_sales.values, y=product_sales.index, ax=ax)
         st.pyplot(fig)
 
         # =========================
-        # ML RECOMMENDATION
+        # AI RECOMMENDATION
         # =========================
-        st.subheader("🤖 AI Ürün Öneri Sistemi")
+        st.subheader("🤖 AI Recommendation Engine")
 
         if st.session_state.role != "pro":
-            st.warning("🔒 Bu özellik sadece Pro kullanıcılar için")
+            st.warning("🔒 Sadece Pro kullanıcılar")
         else:
             basket = df.groupby(['date', 'product'])['quantity'].sum().unstack().fillna(0)
-            basket = basket > 0  # CLEAN BOOLEAN MATRIX
+            basket = basket > 0  # CLEAN FIX
 
             frequent_items = apriori(basket, min_support=0.1, use_colnames=True)
             rules = association_rules(frequent_items, metric="lift", min_threshold=1)
@@ -226,21 +231,29 @@ if uploaded_file:
                 st.warning("Yeterli veri yok")
 
         # =========================
-        # PDF EXPORT
+        # PDF
         # =========================
         st.subheader("📄 PDF Rapor")
+
+        def create_pdf():
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("Arial", size=12)
+
+            pdf.cell(200, 10, "Business Report", ln=True)
+            pdf.cell(200, 10, f"Revenue: {total_revenue}", ln=True)
+            pdf.cell(200, 10, f"Sales: {total_sales}", ln=True)
+            pdf.cell(200, 10, f"Top Product: {top_product}", ln=True)
+
+            file = "report.pdf"
+            pdf.output(file)
+            return file
 
         if st.session_state.role != "pro":
             st.warning("🔒 PDF sadece Pro kullanıcılar için")
         else:
             if st.button("PDF oluştur"):
-                file = create_pdf(
-                    st.session_state.user,
-                    total_revenue,
-                    total_sales,
-                    top_product
-                )
-
+                file = create_pdf()
                 with open(file, "rb") as f:
                     st.download_button("İndir", f, file_name=file)
 
